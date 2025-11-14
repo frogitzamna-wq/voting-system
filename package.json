@@ -75,10 +75,11 @@
     "scrypt-ts": "^1.4.5",
     "scrypt-ts-lib": "^0.1.28",
     "uuid": "^9.0.1",
-    "zokrates-js": "^1.2.0"
+    "zokrates-js": "^1.1.9"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^20.10.0",
     "@types/uuid": "^9.0.7",
     "@typescript-eslint/eslint-plugin": "^6.13.0",

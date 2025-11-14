@@ -34,8 +34,7 @@ export function buildMerkleTree(voterCommitments: string[]): MerkleTree {
   
   // Build tree with SHA-256
   const tree = new MerkleTree(leaves, sha256, {
-    sortPairs: true,
-    duplicateOdd: true
+    sortPairs: true
   })
   
   return tree
@@ -97,13 +96,14 @@ export function verifyMerkleProof(
     const proofElement = Buffer.from(proof[i], 'hex')
     const isRight = (indices >> BigInt(i)) & 1n
     
-    if (isRight === 1n) {
-      // Proof element is on the right
-      computedHash = sha256(Buffer.concat([computedHash, proofElement]))
-    } else {
-      // Proof element is on the left
-      computedHash = sha256(Buffer.concat([proofElement, computedHash]))
-    }
+    // Sort pairs to match tree construction (sortPairs: true)
+    const buffers = isRight === 1n
+      ? [computedHash, proofElement]
+      : [proofElement, computedHash]
+    
+    // Sort buffers lexicographically (matching sortPairs behavior)
+    const sortedBuffers = buffers.sort(Buffer.compare)
+    computedHash = sha256(Buffer.concat(sortedBuffers))
   }
   
   return computedHash.toString('hex') === root
@@ -196,31 +196,60 @@ export class SparseMerkleTree {
   generateProof(index: number): MerkleProof {
     const proof: string[] = []
     let currentIndex = index
+    let indices = 0n
     
     for (let level = 0; level < this.depth; level++) {
       const siblingIndex = currentIndex ^ 1
       const sibling = this.getNodeHash(level, siblingIndex)
       proof.push(sibling)
+      
+      // Track if sibling is on right (1) or left (0)
+      if (siblingIndex > currentIndex) {
+        indices |= (1n << BigInt(level))
+      }
+      
       currentIndex = Math.floor(currentIndex / 2)
     }
     
     const leaf = this.leaves.get(index) || this.getEmptyLeaf()
-    const verified = verifyMerkleProof(
-      leaf,
-      proof,
-      BigInt(index),
-      this.root
-    )
+    
+    // Verify proof using sparse tree logic (no sortPairs)
+    const verified = this.verifyProof(leaf, proof, index)
     
     return {
       leaf,
       root: this.root,
       proof,
-      indices: BigInt(index),
+      indices,
       verified
     }
   }
 
+  /**
+   * Verify proof for sparse tree (no sortPairs)
+   */
+  private verifyProof(leaf: string, proof: string[], index: number): boolean {
+    let computedHash = Buffer.from(leaf, 'hex')
+    let currentIndex = index
+    
+    for (let i = 0; i < proof.length; i++) {
+      const proofElement = Buffer.from(proof[i], 'hex')
+      const siblingIndex = currentIndex ^ 1
+      
+      if (siblingIndex > currentIndex) {
+        // Sibling is on right
+        computedHash = sha256(Buffer.concat([computedHash, proofElement])) as Buffer
+      } else {
+        // Sibling is on left
+        computedHash = sha256(Buffer.concat([proofElement, computedHash])) as Buffer
+      }
+      
+      currentIndex = Math.floor(currentIndex / 2)
+    }
+    
+    return computedHash.toString('hex') === this.root
+  }
+  
   /**
    * Get root hash
    */
