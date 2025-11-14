@@ -1,0 +1,81 @@
+# Environment variables (CRITICAL - Never commit!)
+.env
+.env.local
+.env.*.local
+
+# Private keys and credentials
+keys/encrypted/*.enc
+keys/plaintext/*
+*.key
+*.pem
+voter-credentials/
+
+# Database and data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# sCrypt artifacts (可选 - can commit if needed for deployment)
+artifacts/*.json
+out/
+
+# ZK-SNARK keys (LARGE FILES - never commit)
+src/zk/proving.key
+src/zk/verification.key
+src/zk/*.proving.key
+src/zk/*.verification.key
+src/zk/voteProof.out
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+test-results/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Docker volumes
+docker-volumes/
+
+# Kubernetes secrets
+k8s/secrets/
+
+# Backups
+backup/
+*.backup
+
+# Cache
+.cache/
+.parcel-cache/

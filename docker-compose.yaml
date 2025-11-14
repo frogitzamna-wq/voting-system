@@ -1,0 +1,191 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: voting-postgres
+    environment:
+      POSTGRES_DB: voting_system
+      POSTGRES_USER: voting_user
+      POSTGRES_PASSWORD: voting_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voting_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - voting-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: voting-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - voting-network
+
+  # Vote API Service
+  vote-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: voting-vote-api
+    environment:
+      NODE_ENV: development
+      SERVICE_NAME: vote-api
+      PORT: 3100
+      DATABASE_URL: postgresql://voting_user:voting_password@postgres:5432/voting_system
+      REDIS_URL: redis://redis:6379
+      BSV_NETWORK: testnet
+    ports:
+      - "3100:3100"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run dev
+    networks:
+      - voting-network
+
+  # Ballot API Service
+  ballot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: voting-ballot-api
+    environment:
+      NODE_ENV: development
+      SERVICE_NAME: ballot-api
+      PORT: 3101
+      DATABASE_URL: postgresql://voting_user:voting_password@postgres:5432/voting_system
+      REDIS_URL: redis://redis:6379
+      BSV_NETWORK: testnet
+    ports:
+      - "3101:3101"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run dev
+    networks:
+      - voting-network
+
+  # Verification API Service
+  verification-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: voting-verification-api
+    environment:
+      NODE_ENV: development
+      SERVICE_NAME: verification-api
+      PORT: 3102
+      DATABASE_URL: postgresql://voting_user:voting_password@postgres:5432/voting_system
+      REDIS_URL: redis://redis:6379
+      BSV_NETWORK: testnet
+    ports:
+      - "3102:3102"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run dev
+    networks:
+      - voting-network
+
+  # Explorer API Service
+  explorer-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: voting-explorer-api
+    environment:
+      NODE_ENV: development
+      SERVICE_NAME: explorer-api
+      PORT: 3103
+      DATABASE_URL: postgresql://voting_user:voting_password@postgres:5432/voting_system
+      REDIS_URL: redis://redis:6379
+      BSV_NETWORK: testnet
+    ports:
+      - "3103:3103"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: npm run dev
+    networks:
+      - voting-network
+
+  # pgAdmin (Database Management UI)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: voting-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@voting-system.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - voting-network
+
+  # Redis Commander (Redis Management UI)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: voting-redis-commander
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - voting-network
+
+networks:
+  voting-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  pgadmin_data:

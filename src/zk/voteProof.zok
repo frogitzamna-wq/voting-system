@@ -1,0 +1,101 @@
+// VoteProof Circuit
+// 
+// Zero-knowledge circuit that proves:
+// 1. Voter is in eligible voter list (Merkle proof verification)
+// 2. Voter hasn't voted before (nullifier uniqueness)
+// 3. Vote is for valid candidate
+// 4. Vote commitment is correctly computed
+//
+// WITHOUT revealing:
+// - Voter identity
+// - Vote choice
+// - Any linkage between voter and vote
+
+import "hashes/sha256/512bitPadded" as sha256
+import "utils/pack/u32/nonStrictUnpack256" as unpack256
+
+// Merkle tree depth (supports up to 2^32 = 4.3 billion voters)
+const u32 TREE_DEPTH = 32
+
+// Compute hash of two field elements
+def hash2(field left, field right) -> field {
+    u32[8] leftBits = unpack256(left)
+    u32[8] rightBits = unpack256(right)
+    
+    u32[16] preimage = [...leftBits, ...rightBits]
+    u32[8] digest = sha256(preimage)
+    
+    field result = 0
+    for u32 i in 0..8 {
+        result = result * 256 + digest[i] as field
+    }
+    
+    return result
+}
+
+// Verify Merkle proof
+def verifyMerklePath(
+    field leaf,
+    field[TREE_DEPTH] path,
+    bool[TREE_DEPTH] indices,
+    field root
+) -> bool {
+    field mut current = leaf
+    
+    for u32 i in 0..TREE_DEPTH {
+        field pathElement = path[i]
+        bool isLeft = indices[i]
+        
+        current = if isLeft {
+            hash2(current, pathElement)
+        } else {
+            hash2(pathElement, current)
+        }
+    }
+    
+    return current == root
+}
+
+// Main circuit
+def main(
+    // Private inputs (witness)
+    private field voterId,           // Voter's secret ID
+    private field voteChoice,        // Actual vote (candidate index)
+    private field randomness,        // Random nonce for commitment
+    private field[TREE_DEPTH] merklePath,      // Merkle proof path
+    private bool[TREE_DEPTH] merkleIndices,    // Path directions
+    
+    // Public inputs
+    field merkleRoot,               // Root of eligible voters tree
+    field nullifierHash,            // Prevents double voting
+    field voteCommitment,           // Hidden vote
+    field ballotId,                 // Election identifier
+    field maxCandidates             // Number of candidates
+) -> bool {
+    
+    // 1. Verify voter is in eligible list (Merkle proof)
+    bool voterEligible = verifyMerklePath(
+        voterId,
+        merklePath,
+        merkleIndices,
+        merkleRoot
+    )
+    assert(voterEligible)
+    
+    // 2. Verify nullifier is correctly computed
+    // nullifier = hash(voterId || ballotId)
+    field computedNullifier = hash2(voterId, ballotId)
+    assert(computedNullifier == nullifierHash)
+    
+    // 3. Verify vote commitment is correctly computed
+    // commitment = hash(voteChoice || randomness)
+    field computedCommitment = hash2(voteChoice, randomness)
+    assert(computedCommitment == voteCommitment)
+    
+    // 4. Verify vote is for valid candidate
+    assert(voteChoice >= 0)
+    assert(voteChoice < maxCandidates)
+    
+    // All constraints satisfied
+    return true
+}
