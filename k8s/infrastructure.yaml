@@ -1,0 +1,194 @@
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: voting-system
+  labels:
+    name: voting-system
+---
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: voting-config
+  namespace: voting-system
+data:
+  redis-url: "redis://redis:6379"
+  bsv-network: "testnet"
+  cors-origin: "*"
+---
+# Secrets (base64 encoded - replace with actual values)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: voting-secrets
+  namespace: voting-system
+type: Opaque
+data:
+  database-url: cG9zdGdyZXNxbDovL3VzZXI6cGFzc0Bwb3N0Z3Jlczo1NDMyL3ZvdGluZw==  # postgresql://user:pass@postgres:5432/voting
+  bsv-private-key: Y2hhbmdlbWU=  # changeme
+---
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: voting-ingress
+  namespace: voting-system
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - vote.example.com
+    - ballot.example.com
+    - verify.example.com
+    - explorer.example.com
+    secretName: voting-tls
+  rules:
+  - host: vote.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: vote-api
+            port:
+              number: 3100
+  - host: ballot.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ballot-api
+            port:
+              number: 3101
+  - host: verify.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: verification-api
+            port:
+              number: 3102
+  - host: explorer.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: explorer-api
+            port:
+              number: 3103
+---
+# PostgreSQL StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: voting-system
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: voting
+        - name: POSTGRES_USER
+          value: voting_user
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: voting-secrets
+              key: bsv-private-key
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: voting-system
+spec:
+  clusterIP: None
+  ports:
+  - port: 5432
+  selector:
+    app: postgres
+---
+# Redis Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: voting-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: voting-system
+spec:
+  type: ClusterIP
+  ports:
+  - port: 6379
+  selector:
+    app: redis
